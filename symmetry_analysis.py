@@ -2,7 +2,10 @@ import cv2
 import numpy as np
 import matplotlib.pyplot as plt
 import mediapipe as mp
-mp_face_mesh_module = mp.solutions.face_mesh
+try:
+    mp_face_mesh_module = mp.solutions.face_mesh
+except AttributeError:
+    from mediapipe.python.solutions import face_mesh as mp_face_mesh_module
 
 
 # ─────────────────────────────────────────────

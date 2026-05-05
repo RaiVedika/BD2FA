@@ -9,7 +9,71 @@ from datetime import datetime
 
 # ── Real analysis modules ──────────────────────────────────────────────────────
 import mediapipe as mp
-mp_face_mesh_module = mp.solutions.face_mesh
+try:
+    mp_face_mesh_module = mp.solutions.face_mesh
+    mp_drawing           = mp.solutions.drawing_utils
+    mp_drawing_styles    = mp.solutions.drawing_styles
+except AttributeError:
+    from mediapipe.python.solutions import face_mesh as mp_face_mesh_module
+    from mediapipe.python.solutions import drawing_utils as mp_drawing
+    from mediapipe.python.solutions import drawing_styles as mp_drawing_styles
+
+
+# ── Face mesh overlay ──────────────────────────────────────────────────────────
+_MESH_SPEC    = mp_drawing.DrawingSpec(color=(80, 110, 80),   thickness=1, circle_radius=1)
+_CONTOUR_SPEC = mp_drawing.DrawingSpec(color=(0, 200, 120),   thickness=1, circle_radius=1)
+_IRIS_SPEC    = mp_drawing.DrawingSpec(color=(0, 180, 255),   thickness=1, circle_radius=1)
+_EYE_SPEC     = mp_drawing.DrawingSpec(color=(255, 180, 0),   thickness=1, circle_radius=1)
+
+def draw_face_mesh(frame, face_landmarks, ear, is_blinking):
+    """
+    Draws full MediaPipe face mesh tessellation + contours + iris
+    on the frame, plus a live EAR / blink status HUD.
+    """
+    # Full mesh tessellation (faint green grid)
+    mp_drawing.draw_landmarks(
+        image=frame, landmark_list=face_landmarks,
+        connections=mp_face_mesh_module.FACEMESH_TESSELATION,
+        landmark_drawing_spec=None, connection_drawing_spec=_MESH_SPEC,
+    )
+    # Face oval contour
+    mp_drawing.draw_landmarks(
+        image=frame, landmark_list=face_landmarks,
+        connections=mp_face_mesh_module.FACEMESH_FACE_OVAL,
+        landmark_drawing_spec=None, connection_drawing_spec=_CONTOUR_SPEC,
+    )
+    # Eye contours (yellow)
+    mp_drawing.draw_landmarks(
+        image=frame, landmark_list=face_landmarks,
+        connections=mp_face_mesh_module.FACEMESH_LEFT_EYE,
+        landmark_drawing_spec=None, connection_drawing_spec=_EYE_SPEC,
+    )
+    mp_drawing.draw_landmarks(
+        image=frame, landmark_list=face_landmarks,
+        connections=mp_face_mesh_module.FACEMESH_RIGHT_EYE,
+        landmark_drawing_spec=None, connection_drawing_spec=_EYE_SPEC,
+    )
+    # Irises (cyan — requires refine_landmarks=True)
+    try:
+        mp_drawing.draw_landmarks(
+            image=frame, landmark_list=face_landmarks,
+            connections=mp_face_mesh_module.FACEMESH_IRISES,
+            landmark_drawing_spec=None, connection_drawing_spec=_IRIS_SPEC,
+        )
+    except Exception:
+        pass
+
+    # HUD box
+    h, w = frame.shape[:2]
+    cv2.rectangle(frame, (10, 10), (min(w - 1, 260), 80), (15, 30, 55), -1)
+    cv2.rectangle(frame, (10, 10), (min(w - 1, 260), 80), (86, 182, 202),  1)
+    ear_color   = (0, 80, 255) if is_blinking else (0, 220, 120)
+    blink_label = "BLINK!" if is_blinking else "EYE OPEN"
+    cv2.putText(frame, f"EAR : {ear:.3f}",
+                (18, 36), cv2.FONT_HERSHEY_SIMPLEX, 0.55, ear_color, 1, cv2.LINE_AA)
+    cv2.putText(frame, blink_label,
+                (18, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.55, ear_color, 1, cv2.LINE_AA)
+    return frame
 
 from blink_analysis import (
     calculate_EAR, LEFT_EYE, RIGHT_EYE,
@@ -232,7 +296,9 @@ def run_analysis(video_path, feed_placeholder, progress_placeholder):
                 frame_counter = 0
                 is_blinking   = False
 
-            # Live feed (show every frame, throttle Streamlit updates)
+            # Live feed — draw face mesh overlay then display
+            if results.multi_face_landmarks:
+                draw_face_mesh(frame, results.multi_face_landmarks[0], ear, is_blinking)
             frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             if frame_index % 3 == 0:
                 feed_placeholder.image(frame_rgb, use_container_width=True)
