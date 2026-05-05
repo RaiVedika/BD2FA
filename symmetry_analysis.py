@@ -5,7 +5,7 @@ import mediapipe as mp
 try:
     mp_face_mesh_module = mp.solutions.face_mesh
 except AttributeError:
-    from mediapipe.python.solutions import face_mesh as mp_face_mesh_module
+    mp_face_mesh_module = None
 
 
 # ─────────────────────────────────────────────

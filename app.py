@@ -9,64 +9,69 @@ from datetime import datetime
 
 # ── Real analysis modules ──────────────────────────────────────────────────────
 import mediapipe as mp
-try:
-    mp_face_mesh_module = mp.solutions.face_mesh
-    mp_drawing           = mp.solutions.drawing_utils
-    mp_drawing_styles    = mp.solutions.drawing_styles
-except AttributeError:
-    from mediapipe.python.solutions import face_mesh as mp_face_mesh_module
-    from mediapipe.python.solutions import drawing_utils as mp_drawing
-    from mediapipe.python.solutions import drawing_styles as mp_drawing_styles
+from mediapipe.tasks import python as mp_python
+from mediapipe.tasks.python import vision as mp_vision
+import urllib.request
+
+# ── Download face landmarker model on first run ────────────────────────────────
+_MODEL_PATH = "/tmp/face_landmarker.task"
+_MODEL_URL  = "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/latest/face_landmarker.task"
+
+def _ensure_model():
+    if not os.path.exists(_MODEL_PATH):
+        urllib.request.urlretrieve(_MODEL_URL, _MODEL_PATH)
+
+# ── Face mesh connection index sets (same as old solutions API) ────────────────
+# Tessellation, oval, eyes, irises — raw index pairs for cv2 line drawing
+_TESSELATION = mp.solutions.face_mesh.FACEMESH_TESSELATION if hasattr(mp, 'solutions') else frozenset()
+_FACE_OVAL   = mp.solutions.face_mesh.FACEMESH_FACE_OVAL   if hasattr(mp, 'solutions') else frozenset()
+_LEFT_EYE    = mp.solutions.face_mesh.FACEMESH_LEFT_EYE    if hasattr(mp, 'solutions') else frozenset()
+_RIGHT_EYE   = mp.solutions.face_mesh.FACEMESH_RIGHT_EYE   if hasattr(mp, 'solutions') else frozenset()
+_IRISES      = mp.solutions.face_mesh.FACEMESH_IRISES       if hasattr(mp, 'solutions') else frozenset()
+
+# Fallback hardcoded connection sets if solutions is gone entirely
+if not _TESSELATION:
+    # Eye landmark indices only — minimal fallback
+    _LEFT_EYE  = frozenset([(362,385),(385,387),(387,263),(263,373),(373,380),(380,362)])
+    _RIGHT_EYE = frozenset([(33,160),(160,158),(158,133),(133,153),(153,144),(144,33)])
+    _FACE_OVAL = frozenset([(10,338),(338,297),(297,332),(332,284),(284,251),(251,389),
+                             (389,356),(356,454),(454,323),(323,361),(361,288),(288,397),
+                             (397,365),(365,379),(379,378),(378,400),(400,377),(377,152),
+                             (152,148),(148,176),(176,149),(149,150),(150,136),(136,172),
+                             (172,58),(58,132),(132,93),(93,234),(234,127),(127,162),
+                             (162,21),(21,54),(54,103),(103,67),(67,109),(109,10)])
+    _IRISES    = frozenset()
 
 
-# ── Face mesh overlay ──────────────────────────────────────────────────────────
-_MESH_SPEC    = mp_drawing.DrawingSpec(color=(80, 110, 80),   thickness=1, circle_radius=1)
-_CONTOUR_SPEC = mp_drawing.DrawingSpec(color=(0, 200, 120),   thickness=1, circle_radius=1)
-_IRIS_SPEC    = mp_drawing.DrawingSpec(color=(0, 180, 255),   thickness=1, circle_radius=1)
-_EYE_SPEC     = mp_drawing.DrawingSpec(color=(255, 180, 0),   thickness=1, circle_radius=1)
+def _draw_connections(frame, coords, connections, color, thickness=1):
+    """Draw landmark connections using cv2 lines."""
+    for i, j in connections:
+        if i < len(coords) and j < len(coords):
+            pt1 = (int(coords[i][0]), int(coords[i][1]))
+            pt2 = (int(coords[j][0]), int(coords[j][1]))
+            cv2.line(frame, pt1, pt2, color, thickness, cv2.LINE_AA)
 
-def draw_face_mesh(frame, face_landmarks, ear, is_blinking):
+
+def draw_face_mesh(frame, coords, ear, is_blinking):
     """
-    Draws full MediaPipe face mesh tessellation + contours + iris
-    on the frame, plus a live EAR / blink status HUD.
+    Draws face mesh overlay using raw coordinate array + cv2 lines.
+    Works with both old and new MediaPipe APIs.
+    coords: np.array of shape (N, 2) in pixel coordinates
     """
-    # Full mesh tessellation (faint green grid)
-    mp_drawing.draw_landmarks(
-        image=frame, landmark_list=face_landmarks,
-        connections=mp_face_mesh_module.FACEMESH_TESSELATION,
-        landmark_drawing_spec=None, connection_drawing_spec=_MESH_SPEC,
-    )
-    # Face oval contour
-    mp_drawing.draw_landmarks(
-        image=frame, landmark_list=face_landmarks,
-        connections=mp_face_mesh_module.FACEMESH_FACE_OVAL,
-        landmark_drawing_spec=None, connection_drawing_spec=_CONTOUR_SPEC,
-    )
-    # Eye contours (yellow)
-    mp_drawing.draw_landmarks(
-        image=frame, landmark_list=face_landmarks,
-        connections=mp_face_mesh_module.FACEMESH_LEFT_EYE,
-        landmark_drawing_spec=None, connection_drawing_spec=_EYE_SPEC,
-    )
-    mp_drawing.draw_landmarks(
-        image=frame, landmark_list=face_landmarks,
-        connections=mp_face_mesh_module.FACEMESH_RIGHT_EYE,
-        landmark_drawing_spec=None, connection_drawing_spec=_EYE_SPEC,
-    )
-    # Irises (cyan — requires refine_landmarks=True)
-    try:
-        mp_drawing.draw_landmarks(
-            image=frame, landmark_list=face_landmarks,
-            connections=mp_face_mesh_module.FACEMESH_IRISES,
-            landmark_drawing_spec=None, connection_drawing_spec=_IRIS_SPEC,
-        )
-    except Exception:
-        pass
+    # Tessellation — faint dark green
+    _draw_connections(frame, coords, _TESSELATION, (50, 90, 50), 1)
+    # Face oval — bright green
+    _draw_connections(frame, coords, _FACE_OVAL,   (0, 200, 100), 1)
+    # Eyes — yellow
+    _draw_connections(frame, coords, _LEFT_EYE,    (0, 200, 255), 1)
+    _draw_connections(frame, coords, _RIGHT_EYE,   (0, 200, 255), 1)
+    # Irises — cyan
+    _draw_connections(frame, coords, _IRISES,      (255, 180, 0), 1)
 
     # HUD box
     h, w = frame.shape[:2]
     cv2.rectangle(frame, (10, 10), (min(w - 1, 260), 80), (15, 30, 55), -1)
-    cv2.rectangle(frame, (10, 10), (min(w - 1, 260), 80), (86, 182, 202),  1)
+    cv2.rectangle(frame, (10, 10), (min(w - 1, 260), 80), (86, 182, 202), 1)
     ear_color   = (0, 80, 255) if is_blinking else (0, 220, 120)
     blink_label = "BLINK!" if is_blinking else "EYE OPEN"
     cv2.putText(frame, f"EAR : {ear:.3f}",
@@ -74,6 +79,67 @@ def draw_face_mesh(frame, face_landmarks, ear, is_blinking):
     cv2.putText(frame, blink_label,
                 (18, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.55, ear_color, 1, cv2.LINE_AA)
     return frame
+
+
+# ── FaceMesh context manager shim — works old + new MediaPipe ─────────────────
+class _FaceMeshCompat:
+    """
+    Wraps new MediaPipe Tasks FaceLandmarker to expose the same
+    .process(rgb) → results.multi_face_landmarks interface as the old API.
+    """
+    def __init__(self):
+        _ensure_model()
+        base_opts = mp_python.BaseOptions(model_asset_path=_MODEL_PATH)
+        opts = mp_vision.FaceLandmarkerOptions(
+            base_options=base_opts,
+            output_face_blendshapes=False,
+            output_facial_transformation_matrixes=False,
+            num_faces=1,
+            min_face_detection_confidence=0.5,
+            min_face_presence_confidence=0.5,
+            min_tracking_confidence=0.5,
+        )
+        self._landmarker = mp_vision.FaceLandmarker.create_from_options(opts)
+
+    def process(self, rgb_frame):
+        mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
+        detection = self._landmarker.detect(mp_image)
+        return _ResultsCompat(detection)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        self._landmarker.close()
+
+
+class _ResultsCompat:
+    """Wraps new Tasks result to look like old multi_face_landmarks."""
+    def __init__(self, detection):
+        self._detection = detection
+
+    @property
+    def multi_face_landmarks(self):
+        if not self._detection.face_landmarks:
+            return None
+        return self._detection.face_landmarks  # list of lists of landmarks
+
+
+# ── FaceMesh factory — uses old API if available, new Tasks API otherwise ──────
+def _make_face_mesh():
+    try:
+        return mp.solutions.face_mesh.FaceMesh(
+            static_image_mode=False,
+            max_num_faces=1,
+            refine_landmarks=True,
+            min_detection_confidence=0.5,
+            min_tracking_confidence=0.5,
+        )
+    except AttributeError:
+        return _FaceMeshCompat()
+
+
+mp_face_mesh_module = None  # not needed directly anymore
 
 from blink_analysis import (
     calculate_EAR, LEFT_EYE, RIGHT_EYE,
@@ -237,13 +303,7 @@ def run_analysis(video_path, feed_placeholder, progress_placeholder):
     logs = []
     frame_index = 0
 
-    with mp_face_mesh_module.FaceMesh(
-        static_image_mode=False,
-        max_num_faces=1,
-        refine_landmarks=True,
-        min_detection_confidence=0.5,
-        min_tracking_confidence=0.5
-    ) as face_mesh:
+    with _make_face_mesh() as face_mesh:
 
         while cap.isOpened():
             ret, frame = cap.read()
@@ -259,9 +319,13 @@ def run_analysis(video_path, feed_placeholder, progress_placeholder):
             if results.multi_face_landmarks:
                 face_lms = results.multi_face_landmarks[0]
 
+                # Extract coords — old API: face_lms.landmark list
+                # New Tasks API: face_lms is already the list of landmarks
+                lm_list = face_lms.landmark if hasattr(face_lms, 'landmark') else face_lms
+
                 # Pixel coords for both uses
                 coords = np.array(
-                    [(lm.x * w, lm.y * h) for lm in face_lms.landmark],
+                    [(lm.x * w, lm.y * h) for lm in lm_list],
                     dtype=np.float32
                 )
                 landmarks_history.append(coords)
@@ -298,7 +362,7 @@ def run_analysis(video_path, feed_placeholder, progress_placeholder):
 
             # Live feed — draw face mesh overlay then display
             if results.multi_face_landmarks:
-                draw_face_mesh(frame, results.multi_face_landmarks[0], ear, is_blinking)
+                draw_face_mesh(frame, coords, ear, is_blinking)
             frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             if frame_index % 3 == 0:
                 feed_placeholder.image(frame_rgb, use_container_width=True)
