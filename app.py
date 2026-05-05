@@ -49,15 +49,25 @@ st.markdown("""
         color: #e3edf6 !important;
         font-weight: 500;
     }
-    .stFileUploader,
-    .stFileUploader *,
-    .stFileUploader small,
-    .stFileUploader span,
-    .stFileUploader p,
-    .stFileUploader [role="button"],
-    [data-testid="stFileUploaderDropzone"],
-    [data-testid="stFileUploaderDropzone"] * {
-        color: #6B7280 !important;
+    .stFileUploader label {
+        color: #e3edf6 !important;
+        font-weight: 500;
+    }
+    [data-testid="stFileUploaderDropzone"] {
+        background-color: #FFFFFF !important;
+        border: 2px dashed #3b5a8f !important;
+        border-radius: 8px !important;
+    }
+    [data-testid="stFileUploaderDropzone"] *,
+    [data-testid="stFileUploaderDropzone"] small,
+    [data-testid="stFileUploaderDropzone"] span,
+    [data-testid="stFileUploaderDropzone"] p,
+    [data-testid="stFileUploaderDropzone"] button {
+        color: #374151 !important;
+    }
+    [data-testid="stFileUploaderDropzone"] button {
+        background-color: #f3f4f6 !important;
+        border: 1px solid #d1d5db !important;
     }
     .stStatus {
         background-color: #1f3555 !important;
