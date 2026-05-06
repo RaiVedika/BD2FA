@@ -793,7 +793,7 @@ def main():
     )
     st.markdown(
         '<p style="color:#86b6ca; font-size:30px; font-weight:650; '
-        'margin-top:-8px; margin-bottom:80px;">AI-Powered Forensic Analysis Dashboard (BD2FA)</p>',
+        'margin-top:-8px; margin-bottom:80px;">Facial Motion Analysis Dashboard (BD2FA)</p>',
         unsafe_allow_html=True
     )
 
